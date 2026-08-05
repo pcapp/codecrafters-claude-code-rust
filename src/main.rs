@@ -1,5 +1,6 @@
 use async_openai::{Client, config::OpenAIConfig};
 use clap::Parser;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{env, process};
 
@@ -8,6 +9,38 @@ use std::{env, process};
 struct Args {
     #[arg(short = 'p', long)]
     prompt: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatResponse {
+    choices: Vec<Choice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Choice {
+    message: Message,
+}
+
+#[derive(Debug, Deserialize)]
+struct Message {
+    content: Option<String>,
+    tool_calls: Option<Vec<ToolCall>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolCall {
+    function: FunctionCall,
+}
+
+#[derive(Debug, Deserialize)]
+struct FunctionCall {
+    name: String,
+    arguments: String,
+}
+
+#[derive(Deserialize)]
+struct ReadArgs {
+    file_path: String,
 }
 
 fn read_file_tool(file_path: &str) -> serde_json::Value {
@@ -19,6 +52,29 @@ fn read_file_tool(file_path: &str) -> serde_json::Value {
         Err(err) => serde_json::json!({
           "ok": false,
           "error": err.to_string()
+        }),
+    }
+}
+
+fn execute_tool_call(call: &ToolCall) -> serde_json::Value {
+    match call.function.name.as_str() {
+        "Read" => {
+            let args: ReadArgs = match serde_json::from_str(&call.function.arguments) {
+                Ok(args) => args,
+                Err(err) => {
+                    return serde_json::json!({
+                      "ok": false,
+                      "error": format!("Invalid Read arguments: {}", err)
+                    });
+                }
+            };
+
+            read_file_tool(&args.file_path)
+        }
+
+        unimplemented_tool => serde_json::json!({
+          "ok": false,
+          "error": format!("Unimplemented tool: {}", unimplemented_tool)
         }),
     }
 }
@@ -76,33 +132,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .await?;
 
-    if let Some(tool_calls) = response["choices"][0]["message"]["tool_calls"].as_array() {
-        for call in tool_calls {
-            let name = call["function"]["name"].as_str().unwrap();
+    let response = match serde_json::from_value::<ChatResponse>(response) {
+        Ok(parsed_response) => parsed_response,
+        Err(err) => {
+            eprintln!("Received a malformed OpenRouter response.");
+            eprintln!("Error: {}", err);
+            return Ok(());
+        }
+    };
 
-            // println!("Use {}", name);
+    for choice in &response.choices {
+        let message = &choice.message;
 
-            if let Some(arguments_str) = call["function"]["arguments"].as_str() {
-                let arguments: Value = serde_json::from_str(arguments_str)?;
+        if let Some(tool_calls) = &message.tool_calls {
+            for tool_call in tool_calls {
+                let result = execute_tool_call(tool_call);
 
-                if let Some(arguments_obj) = arguments.as_object() {
-                    if let Some(file_path) = arguments_obj["file_path"].as_str() {
-                        let result = read_file_tool(file_path);
-                        if result["ok"].as_bool() == Some(true) {
-                            if let Some(content) = result["content"].as_str() {
-                                println!("{}", content);
-                            } else if let Some(error) = result["error"].as_str() {
-                                eprintln!("Error: {}", error);
-                            }
-                        }
+                if result["ok"].as_bool() == Some(true) {
+                    if let Some(content) = result["content"].as_str() {
+                        println!("{}", content);
                     }
-                } else {
-                    println!("\targuments: {}", arguments);
+                } else if let Some(error) = result["error"].as_str() {
+                    eprintln!("Tool call error: {}", error);
                 }
             }
+        } else if let Some(content) = &message.content {
+            println!("{}", content);
         }
-    } else if let Some(content) = response["choices"][0]["message"]["content"].as_str() {
-        println!("{}", content);
     }
 
     Ok(())
