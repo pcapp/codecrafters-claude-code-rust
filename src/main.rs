@@ -10,6 +10,19 @@ struct Args {
     prompt: String,
 }
 
+fn read_file_tool(file_path: &str) -> serde_json::Value {
+    match std::fs::read_to_string(file_path) {
+        Ok(contents) => serde_json::json!({
+          "ok": true,
+          "content": contents
+        }),
+        Err(err) => serde_json::json!({
+          "ok": false,
+          "error": err.to_string()
+        }),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
@@ -63,11 +76,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .await?;
 
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    eprintln!("Logs from your program will appear here!");
+    if let Some(tool_calls) = response["choices"][0]["message"]["tool_calls"].as_array() {
+        for call in tool_calls {
+            let name = call["function"]["name"].as_str().unwrap();
 
-    // TODO: Uncomment the lines below to pass the first stage
-    if let Some(content) = response["choices"][0]["message"]["content"].as_str() {
+            // println!("Use {}", name);
+
+            if let Some(arguments_str) = call["function"]["arguments"].as_str() {
+                let arguments: Value = serde_json::from_str(arguments_str)?;
+
+                if let Some(arguments_obj) = arguments.as_object() {
+                    if let Some(file_path) = arguments_obj["file_path"].as_str() {
+                        let result = read_file_tool(file_path);
+                        if result["ok"].as_bool() == Some(true) {
+                            if let Some(content) = result["content"].as_str() {
+                                println!("{}", content);
+                            } else if let Some(error) = result["error"].as_str() {
+                                eprintln!("Error: {}", error);
+                            }
+                        }
+                    }
+                } else {
+                    println!("\targuments: {}", arguments);
+                }
+            }
+        }
+    } else if let Some(content) = response["choices"][0]["message"]["content"].as_str() {
         println!("{}", content);
     }
 
