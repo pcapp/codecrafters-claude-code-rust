@@ -119,33 +119,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = Client::with_config(config);
 
-    let messages = vec![ChatMessage {
+    let mut messages: Vec<Value> = vec![json!(ChatMessage {
         role: Role::User,
         content: args.prompt,
-    }];
+    })];
+
+    let tools = json!([
+      {
+        "type": "function",
+        "function": {
+          "name": "Read",
+          "description": "Read and return the contents of a file",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "file_path": {
+                "type": "string",
+                "description": "The path to the file to read"
+              }
+            },
+            "required": ["file_path"]
+          }
+        }
+      }
+    ]);
 
     let request = json!({
         "messages": messages,
         "model": "anthropic/claude-haiku-4.5",
-        "tools": [
-          {
-            "type": "function",
-            "function": {
-              "name": "Read",
-              "description": "Read and return the contents of a file",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "file_path": {
-                    "type": "string",
-                    "description": "The path to the file to read"
-                  }
-                },
-                "required": ["file_path"]
-              }
-            }
-          }
-        ]
+        "tools": tools,
     });
 
     tracing::debug!(
@@ -154,13 +156,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       payload = %request,
     );
 
-    #[allow(unused_variables)]
     let response: Value = client.chat().create_byot(request).await?;
 
-    tracing::debug!(
-      event = "llm_response",
-      payload = %response,
-    );
+    let raw_message = response["choices"][0]["message"].clone();
 
     let response = match serde_json::from_value::<ChatResponse>(response) {
         Ok(parsed_response) => parsed_response,
@@ -173,6 +171,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for choice in &response.choices {
         let message = &choice.message;
+
+        messages.push(raw_message.clone());
 
         if let Some(tool_calls) = &message.tool_calls {
             for tool_call in tool_calls {
