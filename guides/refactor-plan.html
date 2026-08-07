@@ -1,0 +1,415 @@
+<title>Refactoring plan — claude-code-rust</title>
+
+<style>
+  :root {
+    --ground:      #F6F8F7;
+    --surface:     #FFFFFF;
+    --surface-alt: #ECF0EE;
+    --rule:        #D3DCD8;
+    --ink:         #16201F;
+    --ink-soft:    #475855;
+    --ink-faint:   #6E807C;
+    --verdigris:   #0B6E5E;
+    --verdigris-w: #E2F0EC;
+    --oxide:       #9E3A15;
+    --oxide-w:     #F7E9E2;
+    --code-bg:     #101A19;
+    --code-fg:     #DCE7E3;
+    --code-dim:    #7E948F;
+
+    --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+    --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+    --fs-xs: 0.75rem;
+    --fs-sm: 0.8125rem;
+    --fs-cap: 0.875rem;
+    --fs-base: 1.0625rem;
+    --fs-lg: 1.1875rem;
+    --fs-xl: 1.4375rem;
+    --fs-2xl: 1.875rem;
+    --fs-3xl: 2.625rem;
+
+    --measure: 66ch;
+    --pad: clamp(1.25rem, 5vw, 3rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:      #0E1514;
+      --surface:     #141D1C;
+      --surface-alt: #1B2625;
+      --rule:        #2C3937;
+      --ink:         #E2EAE7;
+      --ink-soft:    #A9BAB6;
+      --ink-faint:   #7C8E8A;
+      --verdigris:   #4FB9A3;
+      --verdigris-w: #14302B;
+      --oxide:       #E08052;
+      --oxide-w:     #2E1A11;
+      --code-bg:     #0A100F;
+      --code-fg:     #D6E3DF;
+      --code-dim:    #6F8580;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0E1514;
+    --surface:     #141D1C;
+    --surface-alt: #1B2625;
+    --rule:        #2C3937;
+    --ink:         #E2EAE7;
+    --ink-soft:    #A9BAB6;
+    --ink-faint:   #7C8E8A;
+    --verdigris:   #4FB9A3;
+    --verdigris-w: #14302B;
+    --oxide:       #E08052;
+    --oxide-w:     #2E1A11;
+    --code-bg:     #0A100F;
+    --code-fg:     #D6E3DF;
+    --code-dim:    #6F8580;
+  }
+
+  :root[data-theme="light"] {
+    --ground:      #F6F8F7;
+    --surface:     #FFFFFF;
+    --surface-alt: #ECF0EE;
+    --rule:        #D3DCD8;
+    --ink:         #16201F;
+    --ink-soft:    #475855;
+    --ink-faint:   #6E807C;
+    --verdigris:   #0B6E5E;
+    --verdigris-w: #E2F0EC;
+    --oxide:       #9E3A15;
+    --oxide-w:     #F7E9E2;
+    --code-bg:     #101A19;
+    --code-fg:     #DCE7E3;
+    --code-dim:    #7E948F;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: var(--fs-base);
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: calc(var(--measure) + 2 * var(--pad));
+    margin-inline: auto;
+    padding: clamp(2.5rem, 7vw, 5rem) var(--pad) 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.25rem;
+  }
+
+  .masthead { display: flex; flex-direction: column; gap: 1rem; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .masthead h1 {
+    font-size: var(--fs-3xl);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+    text-wrap: balance;
+  }
+
+  .lede {
+    font-size: var(--fs-lg);
+    color: var(--ink-soft);
+    max-width: 58ch;
+    text-wrap: pretty;
+  }
+
+  section { display: flex; flex-direction: column; gap: 1.15rem; }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: var(--fs-cap);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--verdigris);
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  p { text-wrap: pretty; }
+  strong { font-weight: 650; }
+
+  ul { display: flex; flex-direction: column; gap: 0.55rem; padding-left: 1.15rem; }
+  li { padding-left: 0.2rem; }
+  li::marker { color: var(--ink-faint); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--surface-alt);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 0.08em 0.32em;
+    word-break: break-word;
+  }
+
+  .block {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--code-bg);
+  }
+
+  .block > figcaption {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    letter-spacing: 0.05em;
+    padding: 0.5rem 0.85rem;
+    color: var(--code-dim);
+    background: rgba(255, 255, 255, 0.035);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .block > figcaption b { color: var(--code-fg); font-weight: 500; }
+
+  pre {
+    overflow-x: auto;
+    padding: 0.95rem 1.05rem;
+    color: var(--code-fg);
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    line-height: 1.62;
+  }
+
+  pre .c { color: var(--code-dim); }
+  pre .d { color: #7FC9B4; }
+
+  /* ---- proposal cards: ranked by payoff, so rank is real information ---- */
+
+  .items { display: flex; flex-direction: column; gap: 2.25rem; }
+
+  .item { display: grid; grid-template-columns: 2.75rem 1fr; gap: 0 1rem; align-items: start; }
+  .item > * { grid-column: 2; }
+
+  .item .rank {
+    grid-column: 1;
+    grid-row: 1 / span 99;
+    font-family: var(--mono);
+    font-size: var(--fs-cap);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-faint);
+    padding-top: 0.3rem;
+    border-top: 2px solid var(--verdigris);
+  }
+
+  .item-body { display: flex; flex-direction: column; gap: 0.8rem; }
+
+  .item h3 {
+    font-size: var(--fs-xl);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+    text-wrap: balance;
+  }
+
+  .where {
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    color: var(--ink-soft);
+  }
+
+  .where b { color: var(--ink); font-weight: 600; }
+
+  em.why {
+    display: block;
+    font-family: var(--sans);
+    font-style: normal;
+    font-size: var(--fs-cap);
+    color: var(--ink-faint);
+    border-left: 2px solid var(--rule);
+    padding-left: 0.85rem;
+  }
+
+  @media (max-width: 34rem) {
+    .item { grid-template-columns: 1fr; }
+    .item > * { grid-column: 1; }
+    .item .rank { grid-row: auto; border-top: none; padding-top: 0; }
+  }
+
+  .note {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    background: var(--oxide-w);
+    border-left: 3px solid var(--oxide);
+    padding: 0.9rem 1.1rem;
+    border-radius: 0 3px 3px 0;
+  }
+
+  .note .tag {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--oxide);
+  }
+
+  .note p { font-size: var(--fs-cap); font-family: var(--sans); color: var(--ink); }
+
+  .order {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--mono);
+    font-size: var(--fs-cap);
+  }
+
+  .order .pill {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--verdigris);
+    color: var(--verdigris);
+    background: var(--verdigris-w);
+    border-radius: 2px;
+  }
+
+  .order .arrow { color: var(--ink-faint); }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.25rem;
+    font-family: var(--sans);
+    font-size: var(--fs-cap);
+    color: var(--ink-faint);
+  }
+
+  :focus-visible { outline: 2px solid var(--verdigris); outline-offset: 2px; }
+</style>
+
+<main class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">codecrafters-claude-code-rust · after stage #FF2</div>
+    <h1>Refactoring plan</h1>
+    <p class="lede"><code>src/main.rs</code> is 202 lines, and <code>main</code> is 118 of them doing five unrelated jobs. The Write and Bash tool stages are next — this is the shape that makes them cheap instead of painful.</p>
+  </header>
+
+  <section>
+    <h2>Ranked by payoff</h2>
+
+    <div class="items">
+
+      <article class="item">
+        <div class="rank">01</div>
+        <div class="item-body">
+          <h3>Split into modules</h3>
+          <p class="where">→ new files alongside <b>src/main.rs</b></p>
+          <figure class="block">
+            <figcaption><b>src/</b><span>target layout</span></figcaption>
+<pre><span class="d">main.rs</span>   args, env, client construction, call into agent   <span class="c">(~40 lines)</span>
+<span class="d">wire.rs</span>   ChatResponse / Choice / Message / ToolCall
+          FunctionCall, plus message constructors
+<span class="d">tools.rs</span>  ReadArgs, read_file_tool, execute, specs
+<span class="d">agent.rs</span>  the loop</pre>
+          </figure>
+          <p>No <code>mod.rs</code> needed — <code>mod wire;</code> in <code>main.rs</code> picks up <code>src/wire.rs</code>.</p>
+          <em class="why">The win is that <code>agent.rs</code> becomes readable as the <em>algorithm</em>, with protocol noise living somewhere else. Everything below is easier once there are places to put things.</em>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rank">02</div>
+        <div class="item-body">
+          <h3>Co-locate each tool's schema with its implementation</h3>
+          <p class="where">→ <b>src/main.rs:116</b> (schema) and <b>src/main.rs:47–81</b> (executor)</p>
+          <p>Seventy lines apart today. One module exposing <code>specs()</code> and <code>execute()</code>, adjacent.</p>
+          <em class="why">This is the defect the file is most likely to grow. Adding <code>Write</code> means editing two distant places, and nothing stops you from advertising a tool you haven't implemented — or implementing one you never advertised. The compiler can't catch either.</em>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rank">03</div>
+        <div class="item-body">
+          <h3>Message constructors</h3>
+          <p class="where">→ <b>src/wire.rs</b></p>
+          <p><code>wire::user(prompt)</code> and <code>wire::tool_result(&amp;call, &amp;output)</code>. Three-line functions.</p>
+          <em class="why">The loop body then reads as intent rather than JSON assembly, and it gives the <code>role</code> / <code>tool_call_id</code> details you learned the hard way exactly one home.</em>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rank">04</div>
+        <div class="item-body">
+          <h3>Stop using JSON as your internal type</h3>
+          <p class="where">→ <b>src/main.rs:47–58</b>, <code>read_file_tool</code></p>
+          <p>It returns <code>{"ok": bool, "content"|"error"}</code> — a hand-rolled <code>Either</code>. Model it as <code>Result&lt;String, String&gt;</code> or a small <code>ToolOutput</code> enum, and serialize to that JSON shape only where you build the tool message.</p>
+          <em class="why">Stringly-typed pokes like <code>result["error"].as_str()</code> disappear from the loop, and the pure functions become trivially testable. Keep the wire format exactly as it is — the model benefits from seeing <code>{"ok":false,"error":…}</code> — just don't carry it around in memory.</em>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rank">05</div>
+        <div class="item-body">
+          <h3>Make failures exit non-zero</h3>
+          <p class="where">→ <b>src/main.rs:156</b> and <b>src/main.rs:163</b></p>
+          <p>Both do <code>eprintln!</code> then <code>return Ok(())</code>, so a malformed response or an empty <code>choices</code> array exits <strong>0</strong>. <code>main</code> already returns <code>Box&lt;dyn Error&gt;</code>, so <code>return Err("no choices in response".into())</code> is enough.</p>
+          <em class="why">The tester checks exit code. Today a bug in either path looks like a wrong-output failure rather than an error, which is a bad way to spend an evening. <code>thiserror</code> is overkill at this size.</em>
+        </div>
+      </article>
+
+      <article class="item">
+        <div class="rank">06</div>
+        <div class="item-body">
+          <h3>Tests for the pure parts</h3>
+          <p class="where">→ <b>src/tools.rs</b>, <b>src/wire.rs</b></p>
+          <p><code>execute_tool_call</code> and the message constructors need no network and no client. A <code>#[cfg(test)] mod tests</code> with <code>tempfile</code> covers the Read cases — success, missing file, malformed arguments.</p>
+          <em class="why">The item most likely to be skipped and most likely to be regretted. It pays for itself the first time a later stage breaks something you thought was settled.</em>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Defer</h2>
+    <div class="note">
+      <span class="tag">Not yet</span>
+      <p>A <code>trait Tool</code> with a <code>Vec&lt;Box&lt;dyn Tool&gt;&gt;</code> registry. Scala instincts will want it, and it's probably where this ends up — but with one tool it's speculative. Wait until Bash lands and you have three. By then you'll know whether tools need state (working directory, permission prompts, output truncation), and <em>that</em> determines whether trait objects or a plain enum is the right call.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Order of operations</h2>
+    <div class="order">
+      <span class="pill">01 modules</span>
+      <span class="arrow">→</span>
+      <span class="pill">02 tools</span>
+      <span class="arrow">→</span>
+      <span class="pill">03 constructors</span>
+      <span class="arrow">→</span>
+      <span class="pill">04 types</span>
+      <span class="arrow">→</span>
+      <span class="pill">05 exits</span>
+      <span class="arrow">→</span>
+      <span class="pill">06 tests</span>
+    </div>
+    <p>01 and 02 are really one operation — moving the tool code is what gives <code>tools.rs</code> its reason to exist. Each step keeps the tree compiling, same discipline as the 4a–4e sequence.</p>
+  </section>
+
+  <footer>
+    codecrafters-claude-code-rust · plan drafted 7 August 2026 · 202 lines at <code>7870d2b</code> + 4d/4e uncommitted
+  </footer>
+
+</main>

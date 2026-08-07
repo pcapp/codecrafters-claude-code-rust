@@ -1,83 +1,19 @@
+mod tools;
+mod wire;
+
 use async_openai::{Client, config::OpenAIConfig};
 use clap::Parser;
-use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{env, process};
+use wire::ChatResponse;
+
+use crate::tools::{execute_tool_call, specs};
 
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Args {
     #[arg(short = 'p', long)]
     prompt: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatResponse {
-    choices: Vec<Choice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Choice {
-    message: Message,
-}
-
-#[derive(Debug, Deserialize)]
-struct Message {
-    content: Option<String>,
-    tool_calls: Option<Vec<ToolCall>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ToolCall {
-    id: String,
-    function: FunctionCall,
-}
-
-#[derive(Debug, Deserialize)]
-struct FunctionCall {
-    name: String,
-    arguments: String,
-}
-
-#[derive(Deserialize)]
-struct ReadArgs {
-    file_path: String,
-}
-
-fn read_file_tool(file_path: &str) -> serde_json::Value {
-    match std::fs::read_to_string(file_path) {
-        Ok(contents) => serde_json::json!({
-          "ok": true,
-          "content": contents
-        }),
-        Err(err) => serde_json::json!({
-          "ok": false,
-          "error": err.to_string()
-        }),
-    }
-}
-
-fn execute_tool_call(call: &ToolCall) -> serde_json::Value {
-    match call.function.name.as_str() {
-        "Read" => {
-            let args: ReadArgs = match serde_json::from_str(&call.function.arguments) {
-                Ok(args) => args,
-                Err(err) => {
-                    return serde_json::json!({
-                      "ok": false,
-                      "error": format!("Invalid Read arguments: {}", err)
-                    });
-                }
-            };
-
-            read_file_tool(&args.file_path)
-        }
-
-        unimplemented_tool => serde_json::json!({
-          "ok": false,
-          "error": format!("Unimplemented tool: {}", unimplemented_tool)
-        }),
-    }
 }
 
 #[tokio::main]
@@ -113,25 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "content": args.prompt,
     })];
 
-    let tools = json!([
-      {
-        "type": "function",
-        "function": {
-          "name": "Read",
-          "description": "Read and return the contents of a file",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "file_path": {
-                "type": "string",
-                "description": "The path to the file to read"
-              }
-            },
-            "required": ["file_path"]
-          }
-        }
-      }
-    ]);
+    let tools = json!([specs()]);
 
     const MAX_LOOPS: u8 = 10;
 

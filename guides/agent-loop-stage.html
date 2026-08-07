@@ -1,0 +1,710 @@
+<title>Stage #FF2 — Implement the agent loop</title>
+
+<style>
+  :root {
+    /* copper oxidizes two ways: verdigris and rust. that's the palette. */
+    --ground:      #F6F8F7;
+    --surface:     #FFFFFF;
+    --surface-alt: #ECF0EE;
+    --rule:        #D3DCD8;
+    --ink:         #16201F;
+    --ink-soft:    #475855;
+    --ink-faint:   #6E807C;
+    --verdigris:   #0B6E5E;
+    --verdigris-w: #E2F0EC;
+    --oxide:       #9E3A15;
+    --oxide-w:     #F7E9E2;
+    --code-bg:     #101A19;
+    --code-fg:     #DCE7E3;
+    --code-dim:    #7E948F;
+
+    --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+    --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+    --fs-xs: 0.75rem;
+    --fs-sm: 0.8125rem;
+    --fs-cap: 0.875rem;
+    --fs-base: 1.0625rem;
+    --fs-lg: 1.1875rem;
+    --fs-xl: 1.4375rem;
+    --fs-2xl: 1.875rem;
+    --fs-3xl: 2.625rem;
+
+    --measure: 66ch;
+    --pad: clamp(1.25rem, 5vw, 3rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:      #0E1514;
+      --surface:     #141D1C;
+      --surface-alt: #1B2625;
+      --rule:        #2C3937;
+      --ink:         #E2EAE7;
+      --ink-soft:    #A9BAB6;
+      --ink-faint:   #7C8E8A;
+      --verdigris:   #4FB9A3;
+      --verdigris-w: #14302B;
+      --oxide:       #E08052;
+      --oxide-w:     #2E1A11;
+      --code-bg:     #0A100F;
+      --code-fg:     #D6E3DF;
+      --code-dim:    #6F8580;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0E1514;
+    --surface:     #141D1C;
+    --surface-alt: #1B2625;
+    --rule:        #2C3937;
+    --ink:         #E2EAE7;
+    --ink-soft:    #A9BAB6;
+    --ink-faint:   #7C8E8A;
+    --verdigris:   #4FB9A3;
+    --verdigris-w: #14302B;
+    --oxide:       #E08052;
+    --oxide-w:     #2E1A11;
+    --code-bg:     #0A100F;
+    --code-fg:     #D6E3DF;
+    --code-dim:    #6F8580;
+  }
+
+  :root[data-theme="light"] {
+    --ground:      #F6F8F7;
+    --surface:     #FFFFFF;
+    --surface-alt: #ECF0EE;
+    --rule:        #D3DCD8;
+    --ink:         #16201F;
+    --ink-soft:    #475855;
+    --ink-faint:   #6E807C;
+    --verdigris:   #0B6E5E;
+    --verdigris-w: #E2F0EC;
+    --oxide:       #9E3A15;
+    --oxide-w:     #F7E9E2;
+    --code-bg:     #101A19;
+    --code-fg:     #DCE7E3;
+    --code-dim:    #7E948F;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: var(--fs-base);
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: calc(var(--measure) + 2 * var(--pad));
+    margin-inline: auto;
+    padding: clamp(2.5rem, 7vw, 5rem) var(--pad) 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.25rem;
+  }
+
+  /* ---- masthead ---- */
+
+  .masthead { display: flex; flex-direction: column; gap: 1rem; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .masthead h1 {
+    font-size: var(--fs-3xl);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+    text-wrap: balance;
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    letter-spacing: 0.06em;
+    padding: 0.25rem 0.55rem;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    color: var(--ink-soft);
+    background: var(--surface);
+  }
+
+  .chip.is-key { color: var(--verdigris); border-color: var(--verdigris); background: var(--verdigris-w); }
+
+  .lede {
+    font-size: var(--fs-lg);
+    color: var(--ink-soft);
+    max-width: 58ch;
+    text-wrap: pretty;
+  }
+
+  /* ---- sections ---- */
+
+  section { display: flex; flex-direction: column; gap: 1.15rem; }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: var(--fs-cap);
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--verdigris);
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  h3 {
+    font-size: var(--fs-xl);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+    text-wrap: balance;
+  }
+
+  p { text-wrap: pretty; }
+
+  a {
+    color: var(--verdigris);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+
+  strong { font-weight: 650; }
+
+  em.why {
+    display: block;
+    font-family: var(--sans);
+    font-style: normal;
+    font-size: var(--fs-cap);
+    color: var(--ink-faint);
+    border-left: 2px solid var(--rule);
+    padding-left: 0.85rem;
+  }
+
+  ul { display: flex; flex-direction: column; gap: 0.6rem; padding-left: 1.15rem; }
+  li { padding-left: 0.2rem; }
+  li::marker { color: var(--ink-faint); }
+
+  /* ---- code ---- */
+
+  .block {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--code-bg);
+  }
+
+  .block > figcaption {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    letter-spacing: 0.05em;
+    padding: 0.5rem 0.85rem;
+    color: var(--code-dim);
+    background: rgba(255, 255, 255, 0.035);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .block > figcaption b { color: var(--code-fg); font-weight: 500; }
+
+  pre {
+    overflow-x: auto;
+    padding: 0.95rem 1.05rem;
+    color: var(--code-fg);
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    line-height: 1.62;
+    tab-size: 4;
+  }
+
+  pre .c { color: var(--code-dim); font-style: italic; }
+  pre .k { color: #7FC9B4; }
+  pre .s { color: #D9A87C; }
+  pre .p { color: var(--code-dim); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--surface-alt);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 0.08em 0.32em;
+    word-break: break-word;
+  }
+
+  /* ---- callout ---- */
+
+  .note {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    background: var(--oxide-w);
+    border-left: 3px solid var(--oxide);
+    padding: 0.9rem 1.1rem;
+    border-radius: 0 3px 3px 0;
+  }
+
+  .note .tag {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--oxide);
+  }
+
+  .note p { font-size: var(--fs-cap); font-family: var(--sans); color: var(--ink); }
+
+  /* ---- numbered steps: a genuine sequence, so it gets numbers ---- */
+
+  .steps { display: flex; flex-direction: column; gap: 2.5rem; }
+
+  .step { display: grid; grid-template-columns: 2.75rem 1fr; gap: 0 1rem; align-items: start; }
+
+  .step > * { grid-column: 2; }
+
+  .step .n {
+    grid-column: 1;
+    grid-row: 1 / span 99;
+    font-family: var(--mono);
+    font-size: var(--fs-cap);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-faint);
+    padding-top: 0.35rem;
+    border-top: 2px solid var(--verdigris);
+  }
+
+  .step-body { display: flex; flex-direction: column; gap: 0.9rem; }
+
+  /* ---- sub-steps: one compiling commit each ---- */
+
+  .substeps {
+    display: flex;
+    flex-direction: column;
+    gap: 1.9rem;
+    margin-top: 0.4rem;
+  }
+
+  .substep {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding-left: 1.15rem;
+    border-left: 1px solid var(--rule);
+  }
+
+  .substep-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 0.7rem;
+  }
+
+  .substep-head .id {
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--verdigris);
+  }
+
+  .substep-head h4 {
+    font-size: var(--fs-lg);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+  }
+
+  .state {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    letter-spacing: 0.06em;
+    padding: 0.16rem 0.45rem;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+
+  .state.same { color: var(--verdigris); background: var(--verdigris-w); }
+  .state.diff { color: var(--oxide); background: var(--oxide-w); }
+  .state.done { color: var(--surface); background: var(--verdigris); font-weight: 600; }
+
+  .note.tight { margin-top: 0.15rem; }
+  .note.tight p { font-size: var(--fs-sm); }
+
+  .check {
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    color: var(--ink-faint);
+    line-height: 1.5;
+  }
+
+  .check b { color: var(--ink-soft); font-weight: 500; }
+
+  @media (max-width: 34rem) {
+    .step { grid-template-columns: 1fr; }
+    .step > * { grid-column: 1; }
+    .step .n { grid-row: auto; border-top: none; padding-top: 0; }
+  }
+
+  /* ---- target line ---- */
+
+  .target {
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    color: var(--ink-soft);
+  }
+
+  .target b { color: var(--ink); font-weight: 600; }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.25rem;
+    font-family: var(--sans);
+    font-size: var(--fs-cap);
+    color: var(--ink-faint);
+  }
+
+  a:focus-visible, :focus-visible {
+    outline: 2px solid var(--verdigris);
+    outline-offset: 2px;
+  }
+</style>
+
+<main class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">CodeCrafters · Build your own Claude Code · Rust</div>
+    <h1>Implement the agent loop</h1>
+    <div class="chips">
+      <span class="chip is-key">Stage #FF2</span>
+      <span class="chip">Medium</span>
+      <span class="chip">In progress</span>
+    </div>
+    <p class="lede">Your program currently does one round-trip and quits. This stage turns that into a loop that keeps talking to the model until it stops asking for tools.</p>
+  </header>
+
+  <section>
+    <h2>What the stage asks</h2>
+    <p>So far the program handles a single interaction: send a prompt, get a response, execute one tool if requested, exit. That works for simple tasks but falls short when the task takes multiple steps — <em>“read a file and fix any bugs.”</em></p>
+    <p>The shape you need:</p>
+
+    <figure class="block">
+      <figcaption><b>pseudocode</b><span>the agent loop</span></figcaption>
+<pre>messages = [{ role: <span class="s">"user"</span>, content: prompt }]
+
+<span class="k">loop</span>:
+    response = call_api(messages)
+    append response.message <span class="k">to</span> messages
+
+    <span class="k">if</span> response has no tool_calls:
+        print response.content
+        exit
+
+    <span class="k">for each</span> tool_call <span class="k">in</span> response.tool_calls:
+        result = execute_tool(tool_call)
+        append {
+            role: <span class="s">"tool"</span>,
+            tool_call_id: tool_call.id,
+            content: result
+        } <span class="k">to</span> messages</pre>
+    </figure>
+
+    <ul>
+      <li>The assistant's message — <strong>including its <code>tool_calls</code> array</strong> — goes back into <code>messages</code>.</li>
+      <li>Each tool result is its own message with <code>role: "tool"</code>, the matching <code>tool_call_id</code>, and the result as <code>content</code>.</li>
+      <li>Loop until <code>tool_calls</code> is missing or empty (<code>finish_reason == "stop"</code> works too), then print and exit.</li>
+    </ul>
+
+    <div class="note">
+      <span class="tag">Behavior change</span>
+      <p>Do <strong>not</strong> print file contents when running <code>Read</code>. That's the opposite of the previous stage. Debug output goes to stderr; stdout gets the final answer and nothing else.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>The test</h2>
+    <p>The tester creates a Python project with a <code>README.md</code> and two randomly-named files in <code>app/</code>, then runs:</p>
+
+    <figure class="block">
+      <figcaption><b>tester</b><span>expects the number, exit 0</span></figcaption>
+<pre><span class="p">$</span> ./your_program.sh -p <span class="s">"Use README.md to determine the chemical
+     expiry period in months. Number only."</span>
+&lt;expiry period in months&gt;</pre>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Verify the diagnosis first</h2>
+    <p>Reproduce the failure locally before changing a line:</p>
+
+    <figure class="block">
+      <figcaption><b>zsh</b><span>build a fixture, run against it</span></figcaption>
+<pre>mkdir -p /tmp/ff2/app
+printf <span class="s">'# My Project\n\nChemical expiry period: 6 months\n'</span> &gt; /tmp/ff2/README.md
+
+<span class="k">cd</span> /tmp/ff2 &amp;&amp; RUST_LOG=debug \
+  ~/repos/codecrafters-claude-code-rust/your_program.sh \
+  -p <span class="s">"Use README.md to determine the chemical expiry period in months. Number only."</span></pre>
+    </figure>
+
+    <p>You'll watch it dump the whole README to stdout and stop — no second turn, no <code>6</code>.</p>
+
+    <div class="note">
+      <span class="tag">Running outside the repo</span>
+      <p><code>dotenvy::dotenv()</code> searches upward from the <em>current</em> directory, so running the binary from the fixture folder never finds the repo's <code>.env</code> and you get <code>OPENROUTER_API_KEY is not set</code>. Load it into the environment first:</p>
+    </div>
+
+    <figure class="block">
+      <figcaption><b>zsh</b><span>export the key, then run</span></figcaption>
+<pre><span class="k">set</span> -a; . ~/repos/codecrafters-claude-code-rust/.env; <span class="k">set</span> +a</pre>
+    </figure>
+
+    <p>The CodeCrafters tester supplies the key itself, so this only affects local runs.</p>
+  </section>
+
+  <section>
+    <h2>Background you'll need</h2>
+
+    <h3>The conversation is append-only JSON</h3>
+    <p>The OpenAI-compatible API is stateless: every request resends the full history. The assistant turn you echo back has to keep its <code>tool_calls</code> array <em>including each call's <code>id</code></em>, because the follow-up <code>role: "tool"</code> messages are matched to it by <code>tool_call_id</code>. Drop the id and the API returns a 400.</p>
+
+    <h3>Typed structs vs. <code>serde_json::Value</code></h3>
+    <p>Your <code>ChatMessage</code> / <code>Role</code> pair can only express a user message. Teaching it to express assistant-with-tool-calls and tool-result is real type design — that's exactly what <code>async-openai</code>'s own <code>ChatCompletionRequestMessage</code> is: an enum with one variant per role.</p>
+    <p>Since you're on <code>create_byot</code> (“bring your own types”) and already hold the raw <code>Value</code> response, the cheap and lossless move is to keep <code>messages</code> as a <code>Vec&lt;serde_json::Value&gt;</code> and push the assistant message straight out of the response JSON. Round-tripping it through your own structs silently drops any field you didn't model.</p>
+  </section>
+
+  <section>
+    <h2>Steps</h2>
+
+    <div class="steps">
+
+      <article class="step">
+        <div class="n">01</div>
+        <div class="step-body">
+          <h3>Add <code>id</code> to <code>ToolCall</code></h3>
+          <p class="target">→ <b>src/main.rs:30</b></p>
+          <figure class="block">
+            <figcaption><b>src/main.rs</b><span>replace the struct</span></figcaption>
+<pre>#[derive(Debug, Deserialize)]
+<span class="k">struct</span> ToolCall {
+    id: String,
+    function: FunctionCall,
+}</pre>
+          </figure>
+          <em class="why">You need it to build <code>tool_call_id</code> on the tool-result message.</em>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="n">02</div>
+        <div class="step-body">
+          <h3>Delete <code>Role</code> and <code>ChatMessage</code></h3>
+          <p class="target">→ <b>src/main.rs:46–56</b></p>
+          <em class="why">Replaced by raw <code>Value</code> messages. Leaving them behind just earns you dead-code warnings.</em>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="n">03</div>
+        <div class="step-body">
+          <h3>Hoist the tools spec out; build <code>messages</code> as JSON</h3>
+          <p class="target">→ replace <b>src/main.rs:122–149</b></p>
+          <figure class="block">
+            <figcaption><b>src/main.rs</b><span>before the loop</span></figcaption>
+<pre><span class="k">let</span> tools = json!([
+    {
+        <span class="s">"type"</span>: <span class="s">"function"</span>,
+        <span class="s">"function"</span>: {
+            <span class="s">"name"</span>: <span class="s">"Read"</span>,
+            <span class="s">"description"</span>: <span class="s">"Read and return the contents of a file"</span>,
+            <span class="s">"parameters"</span>: {
+                <span class="s">"type"</span>: <span class="s">"object"</span>,
+                <span class="s">"properties"</span>: {
+                    <span class="s">"file_path"</span>: {
+                        <span class="s">"type"</span>: <span class="s">"string"</span>,
+                        <span class="s">"description"</span>: <span class="s">"The path to the file to read"</span>
+                    }
+                },
+                <span class="s">"required"</span>: [<span class="s">"file_path"</span>]
+            }
+        }
+    }
+]);
+
+<span class="k">let</span> messages: Vec&lt;Value&gt; = vec![json!({
+    <span class="s">"role"</span>: <span class="s">"user"</span>,
+    <span class="s">"content"</span>: args.prompt,
+})];
+
+<span class="c">// still single-shot — the loop arrives in 4e</span>
+<span class="k">let</span> request = json!({
+    <span class="s">"messages"</span>: messages,
+    <span class="s">"model"</span>: <span class="s">"anthropic/claude-haiku-4.5"</span>,
+    <span class="s">"tools"</span>: tools,
+});</pre>
+          </figure>
+          <em class="why">The tools array is constant across iterations, so it gets its own binding. Keeping the <code>request</code> binding here means everything downstream still compiles and behaves exactly as it does today.</em>
+          <p class="check"><b>check:</b> <code>cargo check</code> is clean, and running the fixture still prints the README.</p>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="n">04</div>
+        <div class="step-body">
+          <h3>Grow the loop in five increments</h3>
+          <p class="target">→ rework <b>src/main.rs:151–192</b>, one piece at a time</p>
+          <p>Each of the five lands on its own: <code>cargo check</code> passes after every one, and the first three don't change what the program prints at all. Only 4d and 4e move observable behavior. Commit between them if you want a bisectable trail.</p>
+
+          <div class="substeps">
+
+            <div class="substep">
+              <div class="substep-head">
+                <span class="id">4a</span>
+                <h4>Record the assistant's reply</h4>
+                <span class="state done">done · 662ed50</span>
+              </div>
+              <p>Make <code>messages</code> mutable. Pull the assistant's message out of the response as raw JSON, and push it onto <code>messages</code> once parsing has succeeded.</p>
+              <em class="why">Sequencing is the whole trick here: <code>from_value</code> takes the <code>Value</code> by value, so anything you want to keep has to be cloned off it first. Keep the raw JSON rather than re-serializing your <code>Message</code> struct — your struct only models two fields, and the assistant turn has to go back to the API intact.</em>
+              <p class="check"><b>check:</b> <code>cargo check</code>; rerun the fixture — still prints the README. Nothing reads <code>messages</code> yet, so this one is inert by design.</p>
+              <div class="note tight">
+                <span class="tag">Trap worth remembering</span>
+                <p>Rust macro delimiters are interchangeable — <code>json![x]</code>, <code>json!(x)</code>, and <code>json!{x}</code> are the same call. Square brackets around the <em>macro</em> do not build an array; only <code>json!([ … ])</code> does. A bare <code>json![Msg { … }]</code> gives you one object, and <code>Value</code> has no <code>push</code> or <code>len</code>. Wrap it in <code>vec![]</code> to get a real <code>Vec&lt;Value&gt;</code>.</p>
+              </div>
+            </div>
+
+            <div class="substep">
+              <div class="substep-head">
+                <span class="id">4b</span>
+                <h4>Take one choice instead of iterating</h4>
+                <span class="state same">same output</span>
+              </div>
+              <p>Drop the <code>for choice in &amp;response.choices</code> loop and bind the first choice instead, bailing to stderr if there isn't one. Give the parsed value a different name from the raw <code>Value</code> while you're in there — the current shadowing gets confusing once both are live.</p>
+              <em class="why">A conversation history is linear; you can't append two parallel assistant turns to it. There's one choice, and iterating hides that.</em>
+              <p>If you haven't used <code>let … else</code>, it destructures or diverges — the <code>else</code> block must exit the scope, so the binding is unconditional afterwards:</p>
+              <figure class="block">
+                <figcaption><b>rust</b><span>let … else</span></figcaption>
+<pre><span class="k">let</span> Some(x) = maybe_x <span class="k">else</span> {
+    <span class="k">return</span> Ok(());  <span class="c">// must diverge: return, break, continue, panic</span>
+};
+<span class="c">// x is in scope here, unwrapped</span></pre>
+              </figure>
+              <p class="check"><b>check:</b> <code>cargo check</code>; output still identical.</p>
+            </div>
+
+            <div class="substep">
+              <div class="substep-head">
+                <span class="id">4c</span>
+                <h4>Make “no tool calls” the exit</h4>
+                <span class="state same">same output</span>
+              </div>
+              <p>Invert the current <code>if</code>/<code>else if</code>: the no-tools branch prints the content and returns, and the tool-call path falls through to the <code>for</code> over the calls. Bind the calls to a variable above that loop.</p>
+              <em class="why">This is the control flow the loop needs — exactly one exit, everything else continues to the next turn. Treat an empty <code>tool_calls</code> array as “no tools” too, not just a missing one; a match guard like <code>Some(calls) if !calls.is_empty()</code> covers both in one arm.</em>
+              <p class="check"><b>check:</b> <code>cargo check</code>; output still identical.</p>
+            </div>
+
+            <div class="substep">
+              <div class="substep-head">
+                <span class="id">4d</span>
+                <h4>Feed tool results back instead of printing them</h4>
+                <span class="state diff">stdout goes empty</span>
+              </div>
+              <p>Delete the printing branch inside the tool-call loop. In its place, push one message per call. This is the protocol shape you're producing:</p>
+              <figure class="block">
+                <figcaption><b>json</b><span>a tool-result message</span></figcaption>
+<pre>{
+  <span class="s">"role"</span>: <span class="s">"tool"</span>,
+  <span class="s">"tool_call_id"</span>: <span class="s">"call_abc123"</span>,
+  <span class="s">"content"</span>: <span class="s">"# My Project\n\nChemical expiry period: 6 months"</span>
+}</pre>
+              </figure>
+              <em class="why"><code>content</code> must be a <strong>string</strong>, and <code>execute_tool_call</code> hands you a <code>Value</code> — so serialize it rather than reaching for the inner <code>content</code> field. Passing the whole <code>{"ok":…,"error":…}</code> object through means a failed read comes back as something the model can react to instead of vanishing. Swap the deleted <code>println!</code> for a <code>tracing::debug!</code> so you can still watch it work.</em>
+              <p class="check"><b>check:</b> <code>cargo check</code>. The program now prints <em>nothing</em> to stdout — correct, since there's still only one turn. Under <code>RUST_LOG=debug</code> you should see the tool run on stderr.</p>
+            </div>
+
+            <div class="substep">
+              <div class="substep-head">
+                <span class="id">4e</span>
+                <h4>Close the loop</h4>
+                <span class="state diff">final answer appears</span>
+              </div>
+              <p>Move the <code>request</code> construction out of the step 03 block and into the top of a bounded <code>for</code> loop that encloses everything through the tool-call block. After the loop, report exhaustion to stderr and return.</p>
+              <em class="why">The request is rebuilt each turn because <code>messages</code> grew. Bound the iteration count rather than using <code>loop</code> — a model that keeps calling tools shouldn't be able to hang the tester. Your two <code>return</code>s inside still exit <code>main</code> directly, which is what you want.</em>
+              <p class="check"><b>check:</b> <code>cargo check</code>, then the fixture prints <code>6</code>.</p>
+            </div>
+
+          </div>
+
+          <div class="note">
+            <span class="tag">Borrow-checker note</span>
+            <p>Putting <code>json!({"messages": messages, "tools": tools})</code> inside a loop is fine — <code>json!</code> expands to <code>to_value(&amp;expr)</code>, so it borrows rather than moves. Same for <code>tool_call.id</code>. If you'd hand-written <code>Value::Object</code> inserts instead, that loop would not compile.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="n">05</div>
+        <div class="step-body">
+          <h3>Drop the stale <code>#[allow(unused_variables)]</code></h3>
+          <p class="target">→ <b>src/main.rs:157</b></p>
+          <em class="why">It was covering for the old single-shot response binding, which no longer exists.</em>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Verify the fix</h2>
+
+    <figure class="block">
+      <figcaption><b>zsh</b><span>expect 6, then 0</span></figcaption>
+<pre><span class="k">cd</span> /tmp/ff2
+~/repos/codecrafters-claude-code-rust/your_program.sh \
+  -p <span class="s">"Use README.md to determine the chemical expiry period in months. Number only."</span>
+<span class="c"># → 6</span>
+
+<span class="k">echo</span> $?
+<span class="c"># → 0</span></pre>
+    </figure>
+
+    <p>Then confirm stdout is clean of file contents by throwing stderr away:</p>
+
+    <figure class="block">
+      <figcaption><b>zsh</b><span>stdout only</span></figcaption>
+<pre>./your_program.sh -p <span class="s">"…"</span> 2&gt;/dev/null</pre>
+    </figure>
+
+    <p>If it misbehaves, read back the exact history you're sending. Note that the <code>llm_response</code> log got dropped along the way — put a <code>tracing::debug!(event = "llm_response", payload = %response)</code> back after the <code>create_byot</code> call if you want to diff what arrived against what you sent:</p>
+
+    <figure class="block">
+      <figcaption><b>zsh</b><span>inspect the request payloads</span></figcaption>
+<pre>RUST_LOG=debug ./your_program.sh -p <span class="s">"…"</span> 2&gt;&amp;1 &gt;/dev/null \
+  | jq -r <span class="s">'select(.fields.event=="llm_request") | .fields.payload'</span></pre>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Worth a look</h2>
+    <ul>
+      <li><code>cargo doc --open -p async-openai</code> → <code>Chat::create_byot</code>, to confirm it's a thin passthrough where request and response are both your own types. While you're there, read <code>ChatCompletionRequestMessage</code> to see how the crate models the four roles.</li>
+      <li>The stage page's <strong>Code Examples</strong> tab has a Rust reference structure — worth comparing against, after you've written yours.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Stage #FF2 · Build your own Claude Code using Rust · notes prepared 7 August 2026
+  </footer>
+
+</main>
