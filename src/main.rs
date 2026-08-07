@@ -93,6 +93,14 @@ fn execute_tool_call(call: &ToolCall) -> serde_json::Value {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .json()
+        .with_writer(std::io::stderr)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+
     let args = Args::parse();
 
     dotenvy::dotenv().ok();
@@ -116,33 +124,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         content: args.prompt,
     }];
 
-    #[allow(unused_variables)]
-    let response: Value = client
-        .chat()
-        .create_byot(json!({
-            "messages": messages,
-            "model": "anthropic/claude-haiku-4.5",
-            "tools": [
-              {
-                "type": "function",
-                "function": {
-                  "name": "Read",
-                  "description": "Read and return the contents of a file",
-                  "parameters": {
-                    "type": "object",
-                    "properties": {
-                      "file_path": {
-                        "type": "string",
-                        "description": "The path to the file to read"
-                      }
-                    },
-                    "required": ["file_path"]
+    let request = json!({
+        "messages": messages,
+        "model": "anthropic/claude-haiku-4.5",
+        "tools": [
+          {
+            "type": "function",
+            "function": {
+              "name": "Read",
+              "description": "Read and return the contents of a file",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "file_path": {
+                    "type": "string",
+                    "description": "The path to the file to read"
                   }
-                }
+                },
+                "required": ["file_path"]
               }
-            ]
-        }))
-        .await?;
+            }
+          }
+        ]
+    });
+
+    tracing::debug!(
+      event = "llm_request",
+      payload = %request,
+    );
+
+    #[allow(unused_variables)]
+    let response: Value = client.chat().create_byot(request).await?;
+
+    tracing::debug!(
+      event = "llm_response",
+      payload = %response,
+    );
 
     let response = match serde_json::from_value::<ChatResponse>(response) {
         Ok(parsed_response) => parsed_response,
