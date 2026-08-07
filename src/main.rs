@@ -150,6 +150,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::debug!(
       event = "llm_request",
+      n_messages = messages.len(),
       payload = %request,
     );
 
