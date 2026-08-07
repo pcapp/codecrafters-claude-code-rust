@@ -1,6 +1,6 @@
 use async_openai::{Client, config::OpenAIConfig};
 use clap::Parser;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{env, process};
 
@@ -41,6 +41,18 @@ struct FunctionCall {
 #[derive(Deserialize)]
 struct ReadArgs {
     file_path: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum Role {
+    User,
+}
+
+#[derive(Debug, Serialize)]
+struct ChatMessage {
+    role: Role,
+    content: String,
 }
 
 fn read_file_tool(file_path: &str) -> serde_json::Value {
@@ -99,16 +111,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = Client::with_config(config);
 
+    let messages = vec![ChatMessage {
+        role: Role::User,
+        content: args.prompt,
+    }];
+
     #[allow(unused_variables)]
     let response: Value = client
         .chat()
         .create_byot(json!({
-            "messages": [
-                {
-                    "role": "user",
-                    "content": args.prompt
-                }
-            ],
+            "messages": messages,
             "model": "anthropic/claude-haiku-4.5",
             "tools": [
               {
