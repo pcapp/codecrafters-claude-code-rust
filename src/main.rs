@@ -1,6 +1,6 @@
 use async_openai::{Client, config::OpenAIConfig};
 use clap::Parser;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{env, process};
 
@@ -41,18 +41,6 @@ struct FunctionCall {
 #[derive(Deserialize)]
 struct ReadArgs {
     file_path: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "lowercase")]
-enum Role {
-    User,
-}
-
-#[derive(Debug, Serialize)]
-struct ChatMessage {
-    role: Role,
-    content: String,
 }
 
 fn read_file_tool(file_path: &str) -> serde_json::Value {
@@ -119,9 +107,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = Client::with_config(config);
 
-    let mut messages: Vec<Value> = vec![json!(ChatMessage {
-        role: Role::User,
-        content: args.prompt,
+    let mut messages: Vec<Value> = vec![json!({
+        "role": "user",
+        "content": args.prompt,
     })];
 
     let tools = json!([
@@ -169,25 +157,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    for choice in &response.choices {
-        let message = &choice.message;
+    let Some(choice) = response.choices.first() else {
+        eprintln!("No choices returned!");
+        return Ok(());
+    };
 
-        messages.push(raw_message.clone());
+    let message = &choice.message;
 
-        if let Some(tool_calls) = &message.tool_calls {
-            for tool_call in tool_calls {
-                let result = execute_tool_call(tool_call);
+    messages.push(raw_message);
 
-                if result["ok"].as_bool() == Some(true) {
-                    if let Some(content) = result["content"].as_str() {
-                        println!("{}", content);
-                    }
-                } else if let Some(error) = result["error"].as_str() {
-                    eprintln!("Tool call error: {}", error);
-                }
-            }
-        } else if let Some(content) = &message.content {
+    let tool_calls = message.tool_calls.as_deref().unwrap_or_default();
+
+    if tool_calls.is_empty() {
+        if let Some(content) = &message.content {
             println!("{}", content);
+        }
+        return Ok(());
+    }
+
+    for tool_call in tool_calls {
+        let result = execute_tool_call(tool_call);
+
+        if result["ok"].as_bool() == Some(true) {
+            if let Some(content) = result["content"].as_str() {
+                println!("{}", content);
+            }
+        } else if let Some(error) = result["error"].as_str() {
+            eprintln!("Tool call error: {}", error);
         }
     }
 
