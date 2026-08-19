@@ -11,3 +11,4 @@ target/
 
 .env
 trace.jsonl
+.idea/

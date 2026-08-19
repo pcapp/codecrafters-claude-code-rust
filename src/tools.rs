@@ -33,7 +33,7 @@ struct ReadArgs {
 }
 
 fn read_file_tool(arguments: &str) -> serde_json::Value {
-    let args: ReadArgs = match serde_json::from_str(&arguments) {
+    let args: ReadArgs = match serde_json::from_str(arguments) {
         Ok(args) => args,
         Err(err) => {
             return serde_json::json!({
