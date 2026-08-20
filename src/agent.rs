@@ -8,7 +8,7 @@ pub async fn run(
     client: &Client<OpenAIConfig>,
     prompt: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let tools = json!([specs()]);
+    let tools = specs();
     let mut messages: Vec<Value> = vec![json!({
         "role": "user",
         "content": prompt,
